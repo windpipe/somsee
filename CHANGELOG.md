@@ -7,10 +7,30 @@
 - `particle_basic_single` 예제 추가 (단일 윈도우)
 - 키 입력 방식 변경: `GetKeyboardState` 폴링 → `KEY_DOWN` 이벤트 (1회 누름 = 정확히 1 스텝)
 
+### 수정
+- **load_file 메모리 리크 해결**: `sdl3.LoadFile` 결과를 파이프라인 생성 후 `sdl3.free`로 해제
+  - `defer if X != nil { sdl3.free(raw_data(X)) }` 패턴 적용
+  - early return / 로드 실패 케이스에서도 이미 로드된 버퍼 안전하게 정리됨
+
 ### 알려진 최적화 필요 항목
-- **renderer.odin 중복**: dual/single 예제에 동일 파일이 복사되어 있음. 예제 수 증가 시 유지보수 부담 누적
-- **load_file 메모리 리크**: `sdl3.LoadFile` 결과를 파이프라인 생성 후 해제하지 않음. 스타트업 1회 발생, 실질 영향 없으나 미정리 상태
+- **renderer.odin 중복**: dual/single 예제에 동일 파일이 복사되어 있음. 각 예제가 렌더러를 독립적으로 커스터마이즈할 수 있으므로 의도된 구조이나, 공통 유틸(`load_file` 등)은 향후 core로 이동 고려
 - **프레임 상한 없음**: vsync 또는 `SDL_DelayNS` 미적용으로 수천 FPS 동작 중. CPU/GPU 불필요한 부하 발생 가능
+
+### Odin defer 패턴 메모
+
+`defer`는 현재 스코프(함수) 종료 시 실행됩니다. 선언 순서와 **역순**으로 실행됩니다.
+
+```odin
+// sdl3.LoadFile 결과 해제 패턴
+data := load_file("file.spv")
+defer if data != nil { sdl3.free(raw_data(data)) }
+
+// 이후 어느 경로로 return 해도 (정상 / 에러 / early return)
+// defer가 항상 free를 보장
+```
+
+`sdl3.LoadFile`이 반환하는 메모리는 SDL 내부 힙에서 할당되므로
+반드시 `sdl3.free`로 해제해야 합니다 (Odin의 `free`와 혼용 불가).
 
 ---
 
