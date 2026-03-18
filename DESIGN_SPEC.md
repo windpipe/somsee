@@ -18,8 +18,60 @@
 * **Health Monitor**: GPU 온도 및 VRAM 상태 감시를 통한 하드웨어 보호.
 
 ### 2.2 파티클 콘트롤러 (Particle_Controller)
-* **Unified SSBO**: 모든 파티클 데이터를 단일 구조체(AoS/SoA)로 패킹하여 GPU 전송 최적화.
+* **Unified SSBO**: 모든 파티클 데이터를 SoA(Structure of Arrays)로 패킹하여 GPU 캐시 효율 최대화.
 * **Modular Pipeline**: 컴퓨트 셰이더를 통해 3가지 핵심 효과(PBD, Strand, Fluid)를 통합 처리.
+* **Per-Particle Lifecycle**: 파티클마다 독립적인 수명, 나이, 상태 플래그를 부여하여 효과별 다른 물리/렌더 적용.
+
+### 2.3 파티클 데이터 모델 (Particle Data Model)
+
+**SoA GPU 버퍼 구성 (목표)**
+
+| 버퍼 | 타입 | 용도 | 현재 |
+|------|------|------|------|
+| `pos` | `vec3` | 위치 (3D) | vec2 (Phase 1) |
+| `vel` | `vec3` | 속도 (3D) | vec2 (Phase 1) |
+| `color` | `vec4` | RGBA | 구현됨 |
+| `size` | `f32` | 크기 | 구현됨 |
+| `lifetime` | `f32` | 최대 수명 | 미구현 |
+| `age` | `f32` | 현재 나이 (매 프레임 += dt) | 미구현 |
+| `flags` | `u32` | 파티클 타입 / 상태 비트 | 미구현 |
+| `user` | `vec4` | 효과별 자유 데이터 | 미구현 |
+
+**flags 비트 레이아웃 (안)**
+
+```
+bits [7:0]  — 파티클 타입 (TYPE_POINT, TYPE_CUBE, TYPE_RIBBON, ...)
+bits [15:8] — 상태 (ALIVE, DYING, DEAD, SPAWNING)
+bits [31:16] — 효과별 서브타입 / 예약
+```
+
+compute shader에서 `flags`를 읽어 파티클마다 다른 물리를 분기 처리:
+
+```glsl
+uint type = flags[i] & 0xFF;
+if      (type == TYPE_DISSOLVE) { /* 수명 기반 크기 축소 */ }
+else if (type == TYPE_DANCING)  { /* 위상 기반 진동 */     }
+else if (type == TYPE_STRAND)   { /* 체인 제약 조건 */     }
+```
+
+### 2.4 렌더 형태 설계 (Render Shape)
+
+효과 목적에 따라 파티클 렌더 형태가 달라진다:
+
+| 효과 타입 | 렌더 형태 | 이유 |
+|-----------|-----------|------|
+| 디졸브/분해 | 큐브 (인스턴싱) | 물질감. 원거리에서 쿼드로 LOD 전환 |
+| 댄싱 파티클 | 포인트/쿼드 | 전체 흐름이 중요. 가장 가벼운 선택 |
+| 헤어/스트링 | 리본 Strip | 실린더 대비 폴리곤 최소화, 털 질감 표현 |
+
+**구현 선행 조건:**
+
+| 형태 | 선행 작업 |
+|------|-----------|
+| 포인트/쿼드 | 이미 구현됨 |
+| 큐브 (기본) | 3D 위치(vec3), MVP 행렬, 깊이 버퍼 |
+| 큐브 + LOD | 카메라 시스템 (거리 계산 기반 전환) |
+| 리본/스트링 | 체인 데이터 구조 (파티클 간 순서 정보) |
 
 ---
 
@@ -64,9 +116,9 @@ $$\Delta p_i = - \frac{w_i}{\sum w_j} C(p) \nabla C(p)$$
 | 단계 | 목표 | 핵심 마일스톤 |
 | :--- | :--- | :--- |
 | **Phase 1** | 인프라 구축 | SDL3 GPU 초기화, 멀티 모니터 윈도우 생성, 기초 컴퓨트 패스 |
-| **Phase 2** | 샘플러 구현 | 메시 표면 샘플링(Barycentric), 애니메이션 본 트래킹 |
-| **Phase 3** | 물리 통합 | PBD/XPBD 솔버 구현, Spatial Hash 충돌 최적화 |
-| **Phase 4** | 고급 효과 | Strand(Hair), Fluid 모듈 및 Audio Reactive 엔진 통합 |
+| **Phase 2** | 파티클 고도화 | Per-particle lifecycle(lifetime/age/flags), 3D 위치(vec3), MVP/카메라, 깊이 버퍼, 큐브 인스턴싱 |
+| **Phase 3** | 샘플러 + 물리 | 메시 표면 샘플링(Barycentric), PBD/XPBD 솔버, Spatial Hash 충돌 최적화 |
+| **Phase 4** | 고급 효과 | Strand(Hair/Ribbon), Fluid 모듈, Audio Reactive 엔진 통합, LOD 시스템 |
 | **Phase 5** | 안정화 | 24시간 스트레스 테스트, 하드웨어 스로틀링 튜닝 |
 
 ---
