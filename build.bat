@@ -1,17 +1,12 @@
 @echo off
+:: somsee 루트 빌드 스크립트 — 모든 예제를 빌드
 cd /d "%~dp0"
-set GLSLC=C:\VulkanSDK\1.3.216.0\Bin\glslc.exe
-set SHADER_DIR=shaders
 
-echo === Compiling shaders ===
-%GLSLC% -fshader-stage=comp %SHADER_DIR%\particle.comp.glsl -o %SHADER_DIR%\particle.comp.spv || goto :error
-%GLSLC% -fshader-stage=vert %SHADER_DIR%\particle.vert.glsl -o %SHADER_DIR%\particle.vert.spv || goto :error
-%GLSLC% -fshader-stage=frag %SHADER_DIR%\particle.frag.glsl -o %SHADER_DIR%\particle.frag.spv || goto :error
-echo Shaders OK
+echo === Building: particle_demo ===
+call examples\particle_demo\build.bat || goto :error
 
-echo === Building Odin ===
-odin build src -out:somsee.exe -o:speed || goto :error
-echo Done: somsee.exe
+echo.
+echo All builds OK.
 goto :end
 
 :error
