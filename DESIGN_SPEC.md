@@ -40,9 +40,10 @@
 **flags 비트 레이아웃 (안)**
 
 ```
-bits [7:0]  — 파티클 타입 (TYPE_POINT, TYPE_CUBE, TYPE_RIBBON, ...)
-bits [15:8] — 상태 (ALIVE, DYING, DEAD, SPAWNING)
-bits [31:16] — 효과별 서브타입 / 예약
+bits [7:0]   — 파티클 타입 (TYPE_POINT, TYPE_CUBE, TYPE_RIBBON, ...)
+bits [15:8]  — 상태 (ALIVE, DYING, DEAD, SPAWNING)
+bits [16]    — FLAG_COLLIDE (충돌 감지 대상 여부)
+bits [31:17] — 효과별 서브타입 / 예약
 ```
 
 compute shader에서 `flags`를 읽어 파티클마다 다른 물리를 분기 처리:
@@ -52,9 +53,50 @@ uint type = flags[i] & 0xFF;
 if      (type == TYPE_DISSOLVE) { /* 수명 기반 크기 축소 */ }
 else if (type == TYPE_DANCING)  { /* 위상 기반 진동 */     }
 else if (type == TYPE_STRAND)   { /* 체인 제약 조건 */     }
+
+// 충돌 플래그가 있는 파티클만 Spatial Hash 조회
+if ((flags[i] & FLAG_COLLIDE) != 0) {
+    // spatial hash 기반 이웃 탐색 + 충돌 해소 (PBD)
+}
 ```
 
-### 2.4 렌더 형태 설계 (Render Shape)
+### 2.4 파티클 충돌 시스템 (Collision)
+
+나이브한 충돌 감지는 O(N²) — 1M 파티클이면 1조 번 비교로 불가능.
+**Spatial Hash** 로 O(N)으로 줄인다.
+
+**원리**
+
+공간을 격자 셀로 분할하고, 각 파티클은 같은 셀 + 인접 셀 파티클하고만 비교:
+
+```
+셀 크기 = 파티클 반지름 × 2
+1M 파티클 × 평균 50 이웃 = 5000만 비교 / 프레임  (RTX 3090 처리 가능)
+```
+
+**GPU 멀티 패스 구현 (Phase 3)**
+
+```
+Compute Pass 1 — 각 파티클을 격자 셀 인덱스에 배정
+Compute Pass 2 — 셀 기준 정렬 (GPU Radix Sort)
+Compute Pass 3 — 인접 셀 조회 → 거리 기반 충돌 해소 (PBD distance constraint)
+```
+
+**효과별 충돌 필요 여부**
+
+| 효과 | 충돌 필요 | 이유 |
+|------|-----------|------|
+| 디졸브/댄싱 | 불필요 | 시각적 흐름 목적, 겹쳐도 무방 |
+| 헤어/스트링 | 선택적 | 체인 내부 제약은 필요, 체인 간 충돌은 고비용 |
+| 유체 (SPH) | 필수 | 밀도/압력 기반 상호작용이 핵심 |
+| PBD 물체 분해 | 필수 | 파편끼리 튕겨야 물질감 생김 |
+
+**`flags`와의 연계**
+
+`FLAG_COLLIDE` 비트가 설정된 파티클만 Spatial Hash에 등록/조회.
+전체 1M 중 충돌이 필요한 파티클만 선택적으로 처리하여 성능 낭비 최소화.
+
+### 2.5 렌더 형태 설계 (Render Shape)
 
 효과 목적에 따라 파티클 렌더 형태가 달라진다:
 
@@ -117,7 +159,7 @@ $$\Delta p_i = - \frac{w_i}{\sum w_j} C(p) \nabla C(p)$$
 | :--- | :--- | :--- |
 | **Phase 1** | 인프라 구축 | SDL3 GPU 초기화, 멀티 모니터 윈도우 생성, 기초 컴퓨트 패스 |
 | **Phase 2** | 파티클 고도화 | Per-particle lifecycle(lifetime/age/flags), 3D 위치(vec3), MVP/카메라, 깊이 버퍼, 큐브 인스턴싱 |
-| **Phase 3** | 샘플러 + 물리 | 메시 표면 샘플링(Barycentric), PBD/XPBD 솔버, Spatial Hash 충돌 최적화 |
+| **Phase 3** | 물리 + 충돌 | PBD/XPBD 솔버, Spatial Hash 충돌 감지 (GPU Radix Sort), FLAG_COLLIDE 선택적 처리, 메시 표면 샘플링(Barycentric) |
 | **Phase 4** | 고급 효과 | Strand(Hair/Ribbon), Fluid 모듈, Audio Reactive 엔진 통합, LOD 시스템 |
 | **Phase 5** | 안정화 | 24시간 스트레스 테스트, 하드웨어 스로틀링 튜닝 |
 
