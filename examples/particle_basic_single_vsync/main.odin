@@ -45,6 +45,8 @@ main :: proc() {
 	fps_cnt : int
 	fps     : int
 
+	fullscreen := false
+
 	running := true
 	for running {
 		now := sdl3.GetPerformanceCounter()
@@ -75,6 +77,9 @@ main :: proc() {
 					ps.active = max(ps.active - PARTICLE_STEP, 1000)
 				case .SPACE:
 					ps.active = INITIAL_PARTICLES
+				case .F11:
+					fullscreen = !fullscreen
+					_ = sdl3.SetWindowFullscreen(window, fullscreen)
 				}
 			}
 		}
