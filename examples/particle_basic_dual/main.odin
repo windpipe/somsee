@@ -11,8 +11,8 @@ PARTICLE_STEP     ::  50_000
 
 main :: proc() {
 	plat, ok := sc.Platform_Init([]sc.Window_Config{
-		{title = "somsee | particle demo [0]", w = WINDOW_W, h = WINDOW_H, flags = {}},
-		{title = "somsee | particle demo [1]", w = WINDOW_W, h = WINDOW_H, flags = {}},
+		{title = "somsee | particle basic dual [0]", w = WINDOW_W, h = WINDOW_H, flags = {}},
+		{title = "somsee | particle basic dual [1]", w = WINDOW_W, h = WINDOW_H, flags = {}},
 	})
 	if !ok { return }
 	defer sc.Platform_Destroy(&plat)
@@ -58,19 +58,17 @@ main :: proc() {
 			case .QUIT:
 				running = false
 			case .KEY_DOWN:
-				if event.key.key == sdl3.K_ESCAPE { running = false }
+				#partial switch event.key.scancode {
+				case .ESCAPE:
+					running = false
+				case .UP, .EQUALS:
+					ps.active = min(ps.active + PARTICLE_STEP, sc.MAX_PARTICLES)
+				case .DOWN, .MINUS:
+					ps.active = max(ps.active - PARTICLE_STEP, 1000)
+				case .SPACE:
+					ps.active = INITIAL_PARTICLES
+				}
 			}
-		}
-
-		kb := sdl3.GetKeyboardState(nil)
-		if kb[sdl3.Scancode.UP] || kb[sdl3.Scancode.EQUALS] {
-			ps.active = min(ps.active + PARTICLE_STEP, sc.MAX_PARTICLES)
-		}
-		if kb[sdl3.Scancode.DOWN] || kb[sdl3.Scancode.MINUS] {
-			ps.active = max(ps.active - PARTICLE_STEP, 1000)
-		}
-		if kb[sdl3.Scancode.SPACE] {
-			ps.active = INITIAL_PARTICLES
 		}
 
 		title := fmt.ctprintf("somsee | %d particles | %d FPS", ps.active, fps)

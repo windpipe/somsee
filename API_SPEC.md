@@ -4,21 +4,40 @@
 
 ---
 
-## 모듈 구조
+## 프로젝트 구조
 
 ```
-src/
-├── main.odin       — 진입점, 메인 루프
-├── platform.odin   — Hardware_Manager: SDL3 초기화, GPU device, 멀티 윈도우
-├── particle.odin   — Particle_Controller: SSBO 생성/업로드, compute dispatch
-└── renderer.odin   — 파이프라인 생성, 렌더 패스 헬퍼
+somsee/
+├── core/                        — 라이브러리 (package somsee)
+│   ├── platform.odin            — Platform: SDL3 초기화, GPU device, 멀티 윈도우
+│   └── particle.odin            — Particle_System: SSBO 생성/업로드, compute dispatch
+├── examples/
+│   └── particle_demo/           — 데모 (package main)
+│       ├── main.odin            — 진입점, 메인 루프
+│       ├── renderer.odin        — 파이프라인 생성, 렌더 패스 헬퍼
+│       ├── shaders/
+│       │   ├── particle.comp.glsl
+│       │   ├── particle.vert.glsl
+│       │   ├── particle.frag.glsl
+│       │   └── *.spv            — 컴파일된 SPIR-V (build.bat 생성)
+│       └── build.bat
+└── build.bat                    — 루트 빌드 (examples 위임)
 ```
 
-모든 파일은 `package main` 단일 패키지.
+**빌드 명령어 (예제)**
+```bat
+:: -collection:somsee=../.. 로 core/ 를 "somsee:core" 로 임포트
+odin build . -collection:somsee=../.. -out:particle_demo.exe -o:speed
+```
+
+**임포트 (예제 코드)**
+```odin
+import sc "somsee:core"
+```
 
 ---
 
-## platform.odin
+## core/platform.odin  (package somsee)
 
 ### 상수
 
@@ -44,18 +63,18 @@ Platform :: struct {
 
 ### 함수
 
-#### `platform_init`
+#### `Platform_Init`
 ```odin
-platform_init(window_configs: []Window_Config, debug_mode := false) -> (Platform, bool)
+Platform_Init(window_configs: []Window_Config, debug_mode := false) -> (Platform, bool)
 ```
 - SDL3 초기화 (`{.VIDEO}`)
 - Vulkan 백엔드 GPUDevice 생성 (`{.SPIRV}`)
 - 각 Window_Config마다 윈도우 생성 후 GPUDevice에 claim
 - 반환: `(Platform, ok)` — 실패 시 ok=false, 정리 후 반환
 
-#### `platform_destroy`
+#### `Platform_Destroy`
 ```odin
-platform_destroy(p: ^Platform)
+Platform_Destroy(p: ^Platform)
 ```
 - 모든 윈도우 release + destroy
 - GPUDevice destroy
@@ -63,7 +82,7 @@ platform_destroy(p: ^Platform)
 
 ---
 
-## particle.odin
+## core/particle.odin  (package somsee)
 
 ### 상수
 
@@ -75,6 +94,7 @@ platform_destroy(p: ^Platform)
 ### 타입
 
 ```odin
+// SoA 레이아웃 — GPU 캐시 효율 최대화
 Particle_System :: struct {
     pos:    ^sdl3.GPUBuffer,  // [MAX_PARTICLES][2]f32  — compute RW + graphics R
     vel:    ^sdl3.GPUBuffer,  // [MAX_PARTICLES][2]f32  — compute RW
@@ -94,6 +114,7 @@ Particle_System :: struct {
 | size | `GRAPHICS_STORAGE_READ` |
 
 ```odin
+// Compute shader uniform (set=2, binding=0)
 Compute_UBO :: struct {
     bounds_x: f32,
     bounds_y: f32,
@@ -102,6 +123,7 @@ Compute_UBO :: struct {
 }
 // 총 16 bytes, std140 호환
 
+// Vertex shader uniform (set=1, binding=0)
 Screen_UBO :: struct {
     w: f32,
     h: f32,
@@ -111,9 +133,9 @@ Screen_UBO :: struct {
 
 ### 함수
 
-#### `particle_system_create`
+#### `Particle_System_Create`
 ```odin
-particle_system_create(
+Particle_System_Create(
     device:   ^sdl3.GPUDevice,
     active:   int,
     bounds_x: f32,
@@ -124,15 +146,15 @@ particle_system_create(
 - Transfer buffer를 통해 초기 데이터 업로드 (copy pass + submit)
 - 초기값: pos=랜덤, vel=±300px/s, color=랜덤 밝은 색, size=1~4px
 
-#### `particle_system_destroy`
+#### `Particle_System_Destroy`
 ```odin
-particle_system_destroy(device: ^sdl3.GPUDevice, ps: ^Particle_System)
+Particle_System_Destroy(device: ^sdl3.GPUDevice, ps: ^Particle_System)
 ```
 - 4개 GPU 버퍼 release
 
-#### `particle_compute`
+#### `Particle_Compute`
 ```odin
-particle_compute(
+Particle_Compute(
     cmd:      ^sdl3.GPUCommandBuffer,
     ps:       ^Particle_System,
     pipeline: ^sdl3.GPUComputePipeline,
@@ -144,11 +166,12 @@ particle_compute(
 - `PushGPUComputeUniformData(cmd, 0, Compute_UBO)` — slot 0
 - `BeginGPUComputePass` with pos(binding=0), vel(binding=1)
 - `DispatchGPUCompute(ceil(active / 256), 1, 1)`
-- **주의**: cmd는 반드시 active compute pass가 없는 상태여야 함
 
 ---
 
-## renderer.odin
+## examples/particle_demo/renderer.odin  (package main)
+
+> 이 파일은 라이브러리가 아닌 예제 전용. `import sc "somsee:core"` 로 core 참조.
 
 ### 타입
 
@@ -165,8 +188,7 @@ Renderer :: struct {
 ```odin
 load_file(path: cstring) -> []u8
 ```
-- `sdl3.LoadFile` 래퍼
-- 실패 시 nil 반환 + 에러 출력
+- `sdl3.LoadFile` 래퍼, 실패 시 nil + 에러 출력
 
 #### `renderer_init`
 ```odin
@@ -175,18 +197,18 @@ renderer_init(
     swapchain_format: sdl3.GPUTextureFormat,
 ) -> (Renderer, bool)
 ```
-- `shaders/particle.comp.spv` → compute pipeline
+- `shaders/particle.comp.spv` → compute pipeline (RW storage 2 + uniform 1)
 - `shaders/particle.vert.spv` + `shaders/particle.frag.spv` → graphics pipeline
-- Graphics pipeline: `POINTLIST`, alpha blending 활성화, 정점 입력 없음
+- Graphics pipeline: `POINTLIST`, alpha blending, 정점 입력 없음
 
 **파이프라인 셰이더 바인딩 요약**
 
-| 파이프라인 | 종류 | 바인딩 |
-|-----------|------|--------|
-| compute | RW storage | 2개 (pos, vel) |
-| compute | uniform | 1개 |
-| graphics vert | storage (RO) | 3개 (pos, color, size) |
-| graphics vert | uniform | 1개 |
+| 파이프라인 | 종류 | 수 |
+|-----------|------|-----|
+| compute | RW storage buffers | 2 (pos, vel) |
+| compute | uniform buffers | 1 |
+| graphics vert | RO storage buffers | 3 (pos, color, size) |
+| graphics vert | uniform buffers | 1 |
 | graphics frag | — | 없음 |
 
 #### `renderer_destroy`
@@ -200,7 +222,7 @@ renderer_draw_window(
     cmd:      ^sdl3.GPUCommandBuffer,
     window:   ^sdl3.Window,
     r:        ^Renderer,
-    ps:       ^Particle_System,
+    ps:       ^sc.Particle_System,
     screen_w: f32,
     screen_h: f32,
 )
@@ -218,8 +240,8 @@ renderer_draw_window(
 **SPIR-V Compute 바인딩 (SDL3 dev-2026-03)**
 
 ```glsl
-layout(set = 1, binding = 0) buffer Positions  { vec2 pos[]; };  // RW
-layout(set = 1, binding = 1) buffer Velocities { vec2 vel[]; };  // RW
+layout(set = 1, binding = 0) buffer Positions  { vec2 pos[]; };  // RW storage
+layout(set = 1, binding = 1) buffer Velocities { vec2 vel[]; };  // RW storage
 layout(set = 2, binding = 0) uniform UBO {                        // Uniform
     float bounds_x;
     float bounds_y;
@@ -249,19 +271,30 @@ layout(set = 1, binding = 0) uniform Screen { float w; float h; };
 입력: `vec4 frag_color`
 로직: `gl_PointCoord` 기반 원형 clip + 중심→가장자리 alpha fade
 
+### SDL3 SPIR-V Descriptor Set 규칙 (중요)
+
+| Set | Compute | Vertex | Fragment |
+|-----|---------|--------|----------|
+| 0 | RO storage (sampled tex, RO buf) | RO storage buffers | sampled textures |
+| 1 | **RW storage buffers/textures** | uniform buffers | RO storage buffers |
+| 2 | **uniform buffers** | — | uniform buffers |
+| 3 | — | — | RW storage |
+
+> CLAUDE.md 등 일부 문서에 set=0이 RW라고 잘못 기재된 경우 있음. 실제 SDL_gpu.h 기준 set=1이 RW.
+
 ---
 
 ## 메인 루프 프레임 순서
 
 ```
-1. GetPerformanceCounter → dt 계산
+1. GetPerformanceCounter → dt 계산 (max 50ms cap)
 2. PollEvent (QUIT, ESC)
 3. GetKeyboardState (UP/DOWN/+/-/SPACE) → ps.active 조절
-4. SetWindowTitle (FPS, active count)
+4. SetWindowTitle (active count, FPS)
 5. AcquireGPUCommandBuffer
-6. particle_compute(cmd, ...)       ← Compute pass
+6. Particle_Compute(cmd, ...)         ← Compute pass
 7. for each window:
-     renderer_draw_window(cmd, ...) ← Render pass
+     renderer_draw_window(cmd, ...)   ← Render pass
 8. SubmitGPUCommandBuffer
 ```
 
@@ -269,10 +302,15 @@ layout(set = 1, binding = 0) uniform Screen { float w; float h; };
 
 ## 빌드
 
-```cmd
-build.bat          :: 셰이더 컴파일 + Odin 빌드
-somsee.exe         :: 실행 (CMD에서. PowerShell 불가)
+```bat
+:: 루트에서
+build.bat
+
+:: 또는 예제 디렉토리에서 직접
+examples\particle_demo\build.bat
 ```
+
+**실행**: `examples\particle_demo\particle_demo.exe` (반드시 CMD에서, PowerShell 불가)
 
 **의존성**
 - Odin dev-2026-03 (`C:\tools\Odin`)

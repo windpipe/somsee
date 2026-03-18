@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### 구조 변경
+- `particle_demo` → `particle_basic_dual` 로 이름 변경
+- `particle_basic_single` 예제 추가 (단일 윈도우)
+- 키 입력 방식 변경: `GetKeyboardState` 폴링 → `KEY_DOWN` 이벤트 (1회 누름 = 정확히 1 스텝)
+
+### 알려진 최적화 필요 항목
+- **renderer.odin 중복**: dual/single 예제에 동일 파일이 복사되어 있음. 예제 수 증가 시 유지보수 부담 누적
+- **load_file 메모리 리크**: `sdl3.LoadFile` 결과를 파이프라인 생성 후 해제하지 않음. 스타트업 1회 발생, 실질 영향 없으나 미정리 상태
+- **프레임 상한 없음**: vsync 또는 `SDL_DelayNS` 미적용으로 수천 FPS 동작 중. CPU/GPU 불필요한 부하 발생 가능
+
+---
+
 ## [0.01] - 2026-03-18
 
 ### Phase 1 — 인프라 구축

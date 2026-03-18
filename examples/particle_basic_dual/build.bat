@@ -11,8 +11,8 @@ echo === Compiling shaders ===
 echo Shaders OK
 
 echo === Building Odin ===
-odin build . -collection:%COLLECTION% -out:particle_demo.exe -o:speed || goto :error
-echo Done: particle_demo.exe
+odin build . -collection:%COLLECTION% -out:particle_basic_dual.exe -o:speed || goto :error
+echo Done: particle_basic_dual.exe
 goto :end
 
 :error
