@@ -10,7 +10,7 @@ echo === Compiling shaders ===
 echo Shaders OK
 
 echo === Building Odin ===
-odin build . -out:somsee.exe -o:speed || goto :error
+odin build src -out:somsee.exe -o:speed || goto :error
 echo Done: somsee.exe
 goto :end
 
