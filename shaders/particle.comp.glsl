@@ -2,12 +2,12 @@
 
 layout(local_size_x = 256) in;
 
-// set=0: RW storage (BeginGPUComputePass bindings)
-layout(set = 0, binding = 0) buffer Positions  { vec2 pos[]; };
-layout(set = 0, binding = 1) buffer Velocities { vec2 vel[]; };
+// set=1: RW storage buffers (compute: set0=RO, set1=RW, set2=uniform)
+layout(set = 1, binding = 0) buffer Positions  { vec2 pos[]; };
+layout(set = 1, binding = 1) buffer Velocities { vec2 vel[]; };
 
-// set=1: uniform (PushGPUComputeUniformData slot=0)
-layout(set = 1, binding = 0) uniform UBO {
+// set=2: uniform (PushGPUComputeUniformData slot=0)
+layout(set = 2, binding = 0) uniform UBO {
     float bounds_x;
     float bounds_y;
     uint  count;

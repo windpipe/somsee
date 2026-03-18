@@ -13,7 +13,7 @@ main :: proc() {
 	plat, ok := platform_init([]Window_Config{
 		{title = "somsee [main]", w = WINDOW_W, h = WINDOW_H, flags = {}},
 		{title = "somsee [sub]",  w = WINDOW_W, h = WINDOW_H, flags = {}},
-	})
+	}, debug_mode = true)
 	if !ok { return }
 	defer platform_destroy(&plat)
 
@@ -36,9 +36,10 @@ main :: proc() {
 	// Timing
 	last    := sdl3.GetPerformanceCounter()
 	freq    := f64(sdl3.GetPerformanceFrequency())
-	fps_acc : f64
-	fps_cnt : int
-	fps     : int
+	fps_acc  : f64
+	fps_cnt  : int
+	fps      : int
+	dbg_tick : int
 
 	running := true
 	for running {
@@ -49,10 +50,12 @@ main :: proc() {
 
 		fps_acc += f64(dt)
 		fps_cnt += 1
+		dbg_tick += 1
 		if fps_acc >= 1.0 {
 			fps     = fps_cnt
 			fps_cnt = 0
 			fps_acc -= 1.0
+			fmt.printf("FPS: %d  dt: %.4f  active: %d\n", fps, dt, ps.active)
 		}
 
 		// 이벤트 처리
