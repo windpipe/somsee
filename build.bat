@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 set GLSLC=C:\VulkanSDK\1.3.216.0\Bin\glslc.exe
 set SHADER_DIR=shaders
 
