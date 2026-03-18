@@ -25,8 +25,11 @@ renderer_init :: proc(
 	swapchain_format: sdl3.GPUTextureFormat,
 ) -> (r: Renderer, ok: bool) {
 	comp_code := load_file("shaders/particle.comp.spv")
+	defer if comp_code != nil { sdl3.free(raw_data(comp_code)) }
 	vert_code := load_file("shaders/particle.vert.spv")
+	defer if vert_code != nil { sdl3.free(raw_data(vert_code)) }
 	frag_code := load_file("shaders/particle.frag.spv")
+	defer if frag_code != nil { sdl3.free(raw_data(frag_code)) }
 	if comp_code == nil || vert_code == nil || frag_code == nil { return }
 
 	// Compute pipeline: pos(binding=0) + vel(binding=1) RW, uniform(set=2)
